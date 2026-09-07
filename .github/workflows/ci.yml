@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  markdown-lint:
+    name: Lint Markdown (CONTRIBUTING.md #4 "lint")
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DavidAnson/markdownlint-cli2-action@v16
+        with:
+          globs: '**/*.md'
+
+  secret-scan:
+    name: Escaneo de secretos (CONTRIBUTING.md #4 "escaneo de secretos")
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  branch-convention:
+    name: Convención de ramas EARS (docs/BRANCHING.md)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verificar prefijo de rama
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          if [[ "$BRANCH" =~ ^(explore|analyze|sandbox)/ ]]; then
+            echo "Fase EARS declarada: $BRANCH"
+          elif [[ "$BRANCH" =~ ^(feature|fix)/ ]]; then
+            echo "Rama de trabajo directo (sin ciclo EARS completo): $BRANCH — permitido por docs/BRANCHING.md"
+          else
+            echo "::error::Rama '$BRANCH' no sigue la convención de docs/BRANCHING.md (explore/, analyze/, sandbox/, feature/, fix/)"
+            exit 1
+          fi
+
+  pr-template-check:
+    name: Bloques EARS en la PR (CONTRIBUTING.md — Plantilla de PR)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verificar los 6 bloques obligatorios
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          REQUIRED=("Comprobado" "No comprobado" "Opciones consideradas" "Antítesis" "Recomendación" "Gate")
+          MISSING=()
+          for block in "${REQUIRED[@]}"; do
+            if ! grep -qi "$block" <<< "$PR_BODY"; then
+              MISSING+=("$block")
+            fi
+          done
+          if [ ${#MISSING[@]} -ne 0 ]; then
+            echo "::error::Faltan bloques EARS obligatorios en la descripción de la PR: ${MISSING[*]}"
+            exit 1
+          fi
+          echo "Los 6 bloques EARS están presentes."
+
+  sandbox-tests:
+    name: Tests (solo si hay código ejecutable — rama sandbox/*)
+    if: startsWith(github.head_ref, 'sandbox/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ejecutar suite de tests si existe un stack detectable
+        run: |
+          if [ -f package.json ]; then
+            npm ci && npm test
+          elif [ -f pyproject.toml ] || [ -f requirements.txt ]; then
+            pip install -r requirements.txt 2>/dev/null || pip install .
+            pytest
+          else
+            echo "Sin código ejecutable detectado todavía en este repo (ver README.md: es la capa de gobernanza, no contiene código de producción). Nada que testear."
+          fi
