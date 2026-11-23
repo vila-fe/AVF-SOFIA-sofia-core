@@ -16,7 +16,7 @@ Ver CONTRIBUTING.md para el circuito de calidad y CODE_OF_CONDUCT.md para las no
 ## Mapeo de herramientas a roles InnerSource
 
 | Herramienta | Rol InnerSource |
-|---|---|
+| --- | --- |
 | Notion (MEM-KORE) | Registro maestro de decisiones y episodios |
 | GitHub | Codigo, PRs, CI, revision por pares |
 | Linear | Issues y seguimiento tecnico |
